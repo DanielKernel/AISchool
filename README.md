@@ -1,15 +1,20 @@
 # AISchool — AI 算法速成代码库
 
-一天速成 10 个核心 AI / 数据科学 / 图论算法的 Python 实现。每个算法精简至 **20-35 行核心代码**，配有详细注释和可运行示例。
+一天速成 **10 个** 核心 AI / 数据科学 / 图论算法的 Python 实现。实现集中在 [`aischool/algorithm_core.py`](aischool/algorithm_core.py)（单一源码，避免与根目录、`algorithms/` 重复）；[`algorithms/*.py`](algorithms/) 保留详细注释与独立运行示例。
 
 ## 快速开始
 
 ```bash
-# 依赖仅需 numpy
 pip install numpy
 
-# 运行任意算法示例
+# 运行单个算法示例
 python algorithms/01_kmeans.py
+
+# 一键运行根目录分主题演示
+python run_all.py
+
+# 自检（assert）
+python examples/algorithms_reference.py
 ```
 
 ## 算法列表
@@ -29,4 +34,4 @@ python algorithms/01_kmeans.py
 
 ## 学习指南
 
-详细的一天速成计划、记忆口诀和考试技巧请参见 [**STUDY_GUIDE.md**](STUDY_GUIDE.md)。
+详细的一日计划、**如何加强练习**、闭卷模拟考与考试技巧见 [**STUDY_GUIDE.md**](STUDY_GUIDE.md)。`docs/` 下仅保留指向该文件的索引。
