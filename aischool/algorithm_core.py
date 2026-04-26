@@ -17,7 +17,7 @@ import numpy as np
 
 def euclidean_distance(a: np.ndarray, b: np.ndarray) -> float:
     """欧氏距离（L2）。"""
-    return float(np.sqrt(np.sum((a - b) ** 2)))
+    return float(np.linalg.norm(a - b))
 
 
 # ---------------------------------------------------------------------------
@@ -68,9 +68,8 @@ def kmeans(
     labels = np.zeros(n_samples, dtype=int)
 
     for iteration in range(max_iter):
-        new_labels = np.array(
-            [np.argmin([euclidean_distance(x, c) for c in centers]) for x in X]
-        )
+        dists = np.linalg.norm(X[:, None, :] - centers[None, :, :], axis=2)
+        new_labels = np.argmin(dists, axis=1)
         new_centers = np.array(
             [
                 X[new_labels == k].mean(axis=0)
@@ -100,7 +99,7 @@ def knn_predict(
 ) -> np.ndarray:
     predictions = []
     for x in X_test:
-        distances = [euclidean_distance(x, xi) for xi in X_train]
+        distances = np.linalg.norm(X_train - x, axis=1)
         k_indices = np.argsort(distances)[:K]
         k_labels = y_train[k_indices]
         values, counts = np.unique(k_labels, return_counts=True)
@@ -461,7 +460,7 @@ def smote(
     for _ in range(n_synthetic):
         idx = np.random.randint(0, n_samples)
         x = X_minority[idx]
-        distances = [euclidean_distance(x, xi) for xi in X_minority]
+        distances = np.linalg.norm(X_minority - x, axis=1)
         distances[idx] = np.inf
         k_indices = np.argsort(distances)[:K]
         neighbor_idx = int(np.random.choice(k_indices))
