@@ -18,11 +18,14 @@ import numpy as np
 from aischool.algorithm_core import (
     SimpleDecisionStump,
     conv2d_valid,
+    dtw_distance,
+    dtw_warping_path,
     is_bipartite_edges,
     knn_classify,
     kmeans_vectorized,
     kruskal_mst,
     linear_regression_gd,
+    linear_regression_gd_recursive,
     max_pool2d,
     pagerank_power_iteration,
     smote_reference,
@@ -68,6 +71,14 @@ def _self_check() -> None:
     ym = 3 * Xm[:, 0] + 2 + rng.normal(0, 0.05, 20)
     w = linear_regression_gd(Xm, ym, lr=0.5, epochs=2000)
     assert abs(w[0] - 3.0) < 0.2
+
+    w_rec = linear_regression_gd_recursive(Xm, ym, lr=0.5, epochs=200)
+    assert np.allclose(w_rec, linear_regression_gd(Xm, ym, lr=0.5, epochs=200))
+
+    s = np.array([1.0, 2.0, 3.0])
+    assert dtw_distance(s, s, squared=True) == 0.0
+    cst, pth = dtw_warping_path(s, s, squared=True)
+    assert cst == 0.0 and pth == [(0, 0), (1, 1), (2, 2)]
 
     Xmin = rng.normal(size=(8, 3))
     syn = smote_reference(Xmin, k=3, n_synthetic=5, seed=0)
