@@ -10,6 +10,28 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+
+def _sliding_window_2d(
+    x: np.ndarray,
+    window_h: int,
+    window_w: int,
+    stride_h: int,
+    stride_w: int,
+) -> np.ndarray:
+    """形状 (out_h, out_w, window_h, window_w) 的滑动窗口视图（零拷贝）。"""
+    x = np.ascontiguousarray(x)
+    H, W = x.shape
+    out_h = (H - window_h) // stride_h + 1
+    out_w = (W - window_w) // stride_w + 1
+    s0, s1 = x.strides
+    return np.lib.stride_tricks.as_strided(
+        x,
+        shape=(out_h, out_w, window_h, window_w),
+        strides=(stride_h * s0, stride_w * s1, s0, s1),
+        writeable=False,
+    )
+
+
 # ---------------------------------------------------------------------------
 # 距离
 # ---------------------------------------------------------------------------
@@ -122,6 +144,7 @@ def knn_predict_batch(
     x_norm = np.sum(X_test * X_test, axis=1, keepdims=True)
     dist_sq = np.maximum(x_norm + t_norm - 2.0 * (X_test @ X_train.T), 0.0)
     k_eff = min(k, X_train.shape[0])
+    # 与逐点 linalg.norm + argsort 的并列次序一致（argpartition 在并列时可能选不同邻居）
     k_nn = np.argsort(dist_sq, axis=1)[:, :k_eff]
     k_labels = y_train[k_nn]
     preds = np.empty(X_test.shape[0], dtype=int)
@@ -236,18 +259,11 @@ def conv2d(
 ) -> np.ndarray:
     if padding > 0:
         input_map = np.pad(input_map, padding, mode="constant", constant_values=0)
-    H_pad, W_pad = input_map.shape
+    else:
+        input_map = np.asarray(input_map)
     kH, kW = kernel.shape
-    out_H = (H_pad - kH) // stride + 1
-    out_W = (W_pad - kW) // stride + 1
-    output = np.zeros((out_H, out_W))
-    for i in range(out_H):
-        for j in range(out_W):
-            region = input_map[
-                i * stride : i * stride + kH, j * stride : j * stride + kW
-            ]
-            output[i, j] = np.sum(region * kernel)
-    return output
+    patches = _sliding_window_2d(input_map, kH, kW, stride, stride)
+    return np.tensordot(patches, kernel, axes=([2, 3], [0, 1]))
 
 
 def max_pooling2d(
@@ -257,18 +273,10 @@ def max_pooling2d(
 ) -> np.ndarray:
     if stride is None:
         stride = pool_size
-    H, W = input_map.shape
-    out_H = (H - pool_size) // stride + 1
-    out_W = (W - pool_size) // stride + 1
-    output = np.zeros((out_H, out_W))
-    for i in range(out_H):
-        for j in range(out_W):
-            region = input_map[
-                i * stride : i * stride + pool_size,
-                j * stride : j * stride + pool_size,
-            ]
-            output[i, j] = np.max(region)
-    return output
+    patches = _sliding_window_2d(
+        input_map, pool_size, pool_size, stride, stride
+    )
+    return np.max(patches, axis=(2, 3))
 
 
 def conv2d_valid(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
@@ -283,18 +291,8 @@ def max_pool2d(
     stride: int,
 ) -> np.ndarray:
     """矩形池化窗口（与 examples 自检一致）。"""
-    H, W = x.shape
-    out_h = (H - pool_h) // stride + 1
-    out_w = (W - pool_w) // stride + 1
-    out = np.zeros((out_h, out_w))
-    for i in range(out_h):
-        for j in range(out_w):
-            patch = x[
-                i * stride : i * stride + pool_h,
-                j * stride : j * stride + pool_w,
-            ]
-            out[i, j] = patch.max()
-    return out
+    patches = _sliding_window_2d(x, pool_h, pool_w, stride, stride)
+    return np.max(patches, axis=(2, 3))
 
 
 def avg_pooling2d(
@@ -304,18 +302,10 @@ def avg_pooling2d(
 ) -> np.ndarray:
     if stride is None:
         stride = pool_size
-    H, W = input_map.shape
-    out_H = (H - pool_size) // stride + 1
-    out_W = (W - pool_size) // stride + 1
-    output = np.zeros((out_H, out_W))
-    for i in range(out_H):
-        for j in range(out_W):
-            region = input_map[
-                i * stride : i * stride + pool_size,
-                j * stride : j * stride + pool_size,
-            ]
-            output[i, j] = np.mean(region)
-    return output
+    patches = _sliding_window_2d(
+        input_map, pool_size, pool_size, stride, stride
+    )
+    return np.mean(patches, axis=(2, 3))
 
 
 # ---------------------------------------------------------------------------
