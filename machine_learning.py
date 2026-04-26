@@ -6,9 +6,12 @@
 import numpy as np
 
 from aischool.algorithm_core import (
+    dtw_distance,
     gradient_descent_linear_regression,
     knn_predict,
     kmeans,
+    linear_regression_gd,
+    linear_regression_gd_recursive,
     smote,
 )
 
@@ -57,6 +60,30 @@ def demo_gradient_descent():
     print(f"  最终 MSE 损失: {losses[-1]:.4f}")
 
 
+def demo_linear_regression_recursive():
+    print("=" * 50)
+    print("【5. 线性回归 — 递归梯度下降（教学版）】")
+    np.random.seed(4)
+    X = np.column_stack([np.linspace(0, 1, 30), np.ones(30)])
+    y = 2.5 * X[:, 0] + 0.5 + np.random.randn(30) * 0.03
+    w_loop = linear_regression_gd(X, y, lr=0.3, epochs=80)
+    w_rec = linear_regression_gd_recursive(X, y, lr=0.3, epochs=80)
+    print(f"  循环 GD  w ≈ [{w_loop[0]:.4f}, {w_loop[1]:.4f}]")
+    print(f"  递归 GD  w ≈ [{w_rec[0]:.4f}, {w_rec[1]:.4f}]（同 epoch 应对齐）")
+    print(f"  最大差异: {np.max(np.abs(w_loop - w_rec)):.2e}")
+
+
+def demo_dtw():
+    print("=" * 50)
+    print("【6. DTW 动态时间规整】")
+    a = np.array([1.0, 2.0, 3.0, 3.0, 4.0])
+    b = np.array([1.0, 1.0, 2.0, 3.0, 4.0, 4.0])
+    d = dtw_distance(a, b, squared=True)
+    print(f"  序列 a: {a.tolist()}")
+    print(f"  序列 b: {b.tolist()}")
+    print(f"  DTW 累计平方代价: {d:.4f}")
+
+
 def demo_smote():
     print("=" * 50)
     print("【4. SMOTE 演示】")
@@ -75,7 +102,7 @@ def demo_smote():
 
 if __name__ == "__main__":
     print("\n==================================================")
-    print("   机器学习算法演示（K-Means / KNN / 梯度下降 / SMOTE）")
+    print("   机器学习算法演示（K-Means / KNN / GD / SMOTE / 递归GD / DTW）")
     print("==================================================\n")
 
     demo_kmeans()
@@ -85,5 +112,9 @@ if __name__ == "__main__":
     demo_gradient_descent()
     print()
     demo_smote()
+    print()
+    demo_linear_regression_recursive()
+    print()
+    demo_dtw()
     print()
     print("所有机器学习算法演示完毕！")

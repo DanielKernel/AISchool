@@ -1,10 +1,12 @@
 """
-10 个核心算法的唯一实现源（供根目录演示、examples 自检、algorithms/*.py 引用）。
+核心算法的唯一实现源（供根目录演示、examples 自检、algorithms/*.py 引用）。
+含 KNN/KMeans/PageRank/决策树(信息增益)/卷积与池化/MST/二分图/梯度下降/SMOTE/DTW 等。
 依赖：numpy；图算法中二分图与 PageRank（字典版）仅用标准库。
 """
 
 from __future__ import annotations
 
+import sys
 from collections import Counter, deque
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -40,6 +42,90 @@ def _sliding_window_2d(
 def euclidean_distance(a: np.ndarray, b: np.ndarray) -> float:
     """欧氏距离（L2）。"""
     return float(np.linalg.norm(a - b))
+
+
+def _dtw_xy_to_2d(x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """1D 视为长度 T、特征维 1；已是 (T, d) 则保持不变。"""
+    xa = np.asarray(x, dtype=np.float64)
+    ya = np.asarray(y, dtype=np.float64)
+    if xa.ndim == 1:
+        xa = xa.reshape(-1, 1)
+    if ya.ndim == 1:
+        ya = ya.reshape(-1, 1)
+    if xa.ndim != 2 or ya.ndim != 2:
+        raise ValueError("dtw: x, y 须为 1D 时间序列或 2D (时间步, 特征)")
+    if xa.shape[1] != ya.shape[1]:
+        raise ValueError("dtw: 特征维 d 须一致")
+    return xa, ya
+
+
+def dtw_distance(
+    x: np.ndarray,
+    y: np.ndarray,
+    squared: bool = True,
+) -> float:
+    """动态时间规整（DTW）距离。`x` 形状 `(n,)` 或 `(n, d)`，`y` 形状 `(m,)` 或 `(m, d)`。
+
+    代价为逐点平方欧氏和（`squared=True`）或逐点 L2（`squared=False`）。
+    返回与经典实现一致的标量距离（平方模式返回的是路径上平方代价之和，非再开方）。
+    """
+    xa, ya = _dtw_xy_to_2d(x, y)
+    n, m = xa.shape[0], ya.shape[0]
+    diff = xa[:, None, :] - ya[None, :, :]
+    if squared:
+        cost = np.sum(diff * diff, axis=2)
+    else:
+        cost = np.linalg.norm(diff, axis=2)
+    dtw = np.full((n + 1, m + 1), np.inf, dtype=np.float64)
+    dtw[0, 0] = 0.0
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            c = float(cost[i - 1, j - 1])
+            dtw[i, j] = c + min(dtw[i - 1, j], dtw[i, j - 1], dtw[i - 1, j - 1])
+    return float(dtw[n, m])
+
+
+def dtw_warping_path(
+    x: np.ndarray,
+    y: np.ndarray,
+    squared: bool = True,
+) -> Tuple[float, List[Tuple[int, int]]]:
+    """DTW 累计代价与对齐路径（元组为 `x` / `y` 的 0 起始下标；并列时优先对角步）。"""
+    xa, ya = _dtw_xy_to_2d(x, y)
+    n, m = xa.shape[0], ya.shape[0]
+    diff = xa[:, None, :] - ya[None, :, :]
+    if squared:
+        cost = np.sum(diff * diff, axis=2)
+    else:
+        cost = np.linalg.norm(diff, axis=2)
+    dtw = np.full((n + 1, m + 1), np.inf, dtype=np.float64)
+    dtw[0, 0] = 0.0
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            c = float(cost[i - 1, j - 1])
+            dtw[i, j] = c + min(dtw[i - 1, j], dtw[i, j - 1], dtw[i - 1, j - 1])
+    path: List[Tuple[int, int]] = []
+    i, j = n, m
+    while i > 0 or j > 0:
+        if i == 0:
+            j -= 1
+            path.append((0, j))
+        elif j == 0:
+            i -= 1
+            path.append((i, 0))
+        else:
+            path.append((i - 1, j - 1))
+            c = float(cost[i - 1, j - 1])
+            prev = dtw[i, j] - c
+            diag, up, left = dtw[i - 1, j - 1], dtw[i - 1, j], dtw[i, j - 1]
+            if np.isclose(prev, diag):
+                i, j = i - 1, j - 1
+            elif np.isclose(prev, up):
+                i -= 1
+            else:
+                j -= 1
+    path.reverse()
+    return float(dtw[n, m]), path
 
 
 # ---------------------------------------------------------------------------
@@ -564,6 +650,36 @@ def linear_regression_gd(
 ) -> np.ndarray:
     w, _ = gradient_descent(X, y, lr=lr, max_iters=epochs, early_stop=False)
     return w
+
+
+def linear_regression_gd_recursive(
+    X: np.ndarray,
+    y: np.ndarray,
+    lr: float = 0.1,
+    epochs: int = 500,
+    w: Optional[np.ndarray] = None,
+    depth: int = 0,
+    max_depth: Optional[int] = None,
+) -> np.ndarray:
+    """线性回归 MSE 的批量梯度下降（递归形式，数学上等价于循环版）。
+
+    仅作教学演示：Python 递归深度有限，默认将迭代步数限制为
+    ``min(epochs, max_depth, sys.getrecursionlimit() - 80)`` 以防栈溢出；
+    长训练请用 `linear_regression_gd` / `gradient_descent`。
+    """
+    m, d = X.shape
+    if w is None:
+        w = np.zeros(d)
+    lim = sys.getrecursionlimit() - 80
+    cap = min(epochs, max_depth if max_depth is not None else epochs, lim)
+    if depth >= cap:
+        return w
+    pred = X @ w
+    grad = (2.0 / m) * (X.T @ (pred - y))
+    w_new = w - lr * grad
+    return linear_regression_gd_recursive(
+        X, y, lr=lr, epochs=epochs, w=w_new, depth=depth + 1, max_depth=max_depth
+    )
 
 
 def smote_reference(

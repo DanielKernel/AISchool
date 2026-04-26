@@ -16,7 +16,8 @@ def run_module(module_name, description):
         if module_name == "machine_learning":
             from machine_learning import (
                 demo_kmeans, demo_knn,
-                demo_gradient_descent, demo_smote
+                demo_gradient_descent, demo_smote,
+                demo_linear_regression_recursive, demo_dtw,
             )
             demo_kmeans()
             print()
@@ -25,6 +26,10 @@ def run_module(module_name, description):
             demo_gradient_descent()
             print()
             demo_smote()
+            print()
+            demo_linear_regression_recursive()
+            print()
+            demo_dtw()
 
         elif module_name == "graph_algorithms":
             from graph_algorithms import (
@@ -57,11 +62,11 @@ def run_module(module_name, description):
 
 def main():
     print("=" * 60)
-    print("   AI 算法速通——10 个核心算法一键演示")
+    print("   AI 算法速通——核心算法一键演示")
     print("=" * 60)
     print()
     print("涵盖算法：")
-    print("  机器学习: K-Means / KNN / 梯度下降(线性回归) / SMOTE")
+    print("  机器学习: K-Means / KNN / 梯度下降 / SMOTE / 递归GD / DTW")
     print("  图算法:   PageRank / 二分图判断 / Kruskal最小生成树")
     print("  深度学习: 决策树(信息增益) / 卷积 / Max Pooling")
 
@@ -69,7 +74,7 @@ def main():
 
     results.append(run_module(
         "machine_learning",
-        "机器学习算法：K-Means / KNN / 梯度下降 / SMOTE"
+        "机器学习算法：K-Means / KNN / 梯度下降 / SMOTE / 递归GD / DTW"
     ))
     results.append(run_module(
         "graph_algorithms",
