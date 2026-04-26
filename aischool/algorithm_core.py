@@ -47,6 +47,15 @@ def euclidean_distance(a: np.ndarray, b: np.ndarray) -> float:
 # ---------------------------------------------------------------------------
 
 
+def _kmeans_centers_from_labels(X: np.ndarray, labels: np.ndarray, k: int, old: np.ndarray) -> np.ndarray:
+    """按标签聚合并求均值；空簇保留 old 中对应簇心。"""
+    d = X.shape[1]
+    sums = np.zeros((k, d), dtype=X.dtype)
+    np.add.at(sums, labels, X)
+    counts = np.bincount(labels, minlength=k).astype(X.dtype)[:, None]
+    return np.where(counts > 0, sums / counts, old)
+
+
 def kmeans_vectorized(
     X: np.ndarray,
     k: int,
@@ -62,11 +71,7 @@ def kmeans_vectorized(
     for _ in range(max_iter):
         dists = np.linalg.norm(X[:, None, :] - centers[None, :, :], axis=2)
         labels = np.argmin(dists, axis=1)
-        new_centers = centers.copy()
-        for j in range(k):
-            mask = labels == j
-            if np.any(mask):
-                new_centers[j] = X[mask].mean(axis=0)
+        new_centers = _kmeans_centers_from_labels(X, labels, k, centers)
         if np.linalg.norm(new_centers - centers) < tol:
             centers = new_centers
             break
@@ -92,14 +97,7 @@ def kmeans(
     for iteration in range(max_iter):
         dists = np.linalg.norm(X[:, None, :] - centers[None, :, :], axis=2)
         new_labels = np.argmin(dists, axis=1)
-        new_centers = np.array(
-            [
-                X[new_labels == k].mean(axis=0)
-                if np.any(new_labels == k)
-                else centers[k]
-                for k in range(K)
-            ]
-        )
+        new_centers = _kmeans_centers_from_labels(X, new_labels, K, centers)
         if np.allclose(centers, new_centers):
             break
         centers = new_centers
@@ -132,8 +130,7 @@ def knn_predict_one(
     distances = np.linalg.norm(X_train - x_query, axis=1)
     k_nearest_indices = np.argsort(distances)[:k]
     k_nearest_labels = y_train[k_nearest_indices]
-    most_common = Counter(k_nearest_labels).most_common(1)
-    return int(most_common[0][0])
+    return int(Counter(k_nearest_labels).most_common(1)[0][0])
 
 
 def knn_predict_batch(
@@ -222,27 +219,31 @@ def entropy(y: np.ndarray) -> float:
     if len(y) == 0:
         return 0.0
     _, counts = np.unique(y, return_counts=True)
-    probs = counts / len(y)
-    return float(-np.sum(probs * np.log2(probs + 1e-12)))
+    p = counts.astype(np.float64) / len(y)
+    return float(-np.sum(p * np.log2(np.clip(p, 1e-12, None))))
 
 
 def information_gain(X_col: np.ndarray, y: np.ndarray) -> float:
     parent_entropy = entropy(y)
     n = len(y)
-    weighted_child_entropy = 0.0
-    for val in np.unique(X_col):
-        mask = X_col == val
-        child_y = y[mask]
-        weight = len(child_y) / n
-        weighted_child_entropy += weight * entropy(child_y)
-    return parent_entropy - weighted_child_entropy
+    if n == 0:
+        return 0.0
+    _, inv = np.unique(X_col, return_inverse=True)
+    g = int(inv.max()) + 1 if inv.size else 0
+    sizes = np.bincount(inv, minlength=g)
+    weighted = 0.0
+    for gid in range(g):
+        sz = int(sizes[gid])
+        if sz == 0:
+            continue
+        weighted += (sz / n) * entropy(y[inv == gid])
+    return parent_entropy - weighted
 
 
 def best_split_feature(X: np.ndarray, y: np.ndarray) -> Tuple[int, float]:
-    n_features = X.shape[1]
-    gains = [information_gain(X[:, j], y) for j in range(n_features)]
-    best_feat_idx = int(np.argmax(gains))
-    return best_feat_idx, gains[best_feat_idx]
+    gains = np.array([information_gain(X[:, j], y) for j in range(X.shape[1])])
+    j = int(np.argmax(gains))
+    return j, float(gains[j])
 
 
 # ---------------------------------------------------------------------------
@@ -339,23 +340,26 @@ def is_bipartite(
 
 class UnionFind:
     def __init__(self, n: int) -> None:
-        self.parent = list(range(n))
-        self.rank = [0] * n
+        self.parent = np.arange(n, dtype=np.int32)
+        self.rank = np.zeros(n, dtype=np.int32)
 
     def find(self, x: int) -> int:
-        if self.parent[x] != x:
-            self.parent[x] = self.find(self.parent[x])
-        return self.parent[x]
+        p = self.parent
+        while p[x] != x:
+            p[x] = p[p[x]]
+            x = int(p[x])
+        return x
 
     def union(self, x: int, y: int) -> bool:
         rx, ry = self.find(x), self.find(y)
         if rx == ry:
             return False
-        if self.rank[rx] < self.rank[ry]:
+        pr, rk = self.parent, self.rank
+        if rk[rx] < rk[ry]:
             rx, ry = ry, rx
-        self.parent[ry] = rx
-        if self.rank[rx] == self.rank[ry]:
-            self.rank[rx] += 1
+        pr[ry] = rx
+        if rk[rx] == rk[ry]:
+            rk[rx] += 1
         return True
 
 
@@ -381,9 +385,10 @@ def kruskal_weight_first(
     edges: List[Tuple[float, int, int]],
 ) -> Tuple[List[Tuple[int, int, float]], float]:
     """边列表为 (weight, u, v)，与 algorithms/08 示例一致。"""
-    as_uvw = [(u, v, w) for w, u, v in edges]
-    mst, total = kruskal(n, as_uvw)
-    return mst, total
+    ar = np.asarray(edges, dtype=np.float64)
+    ar = ar[np.argsort(ar[:, 0])]
+    as_uvw = [(int(r[1]), int(r[2]), float(r[0])) for r in ar]
+    return kruskal(n, as_uvw)
 
 
 # ---------------------------------------------------------------------------
@@ -419,6 +424,7 @@ def gradient_descent(
     lr: float = 0.01,
     max_iters: int = 1000,
     tol: float = 1e-6,
+    early_stop: bool = True,
 ) -> Tuple[np.ndarray, List[float]]:
     """X 已含偏置列时的批量梯度下降（与 algorithms/09 一致）。"""
     n = X.shape[0]
@@ -431,7 +437,11 @@ def gradient_descent(
         losses.append(loss)
         gradient = (2 / n) * (X.T @ error)
         w = w - lr * gradient
-        if len(losses) > 1 and abs(losses[-2] - losses[-1]) < tol:
+        if (
+            early_stop
+            and len(losses) > 1
+            and abs(losses[-2] - losses[-1]) < tol
+        ):
             break
     return w, losses
 
@@ -448,19 +458,19 @@ def smote(
     random_state: int = 42,
 ) -> np.ndarray:
     np.random.seed(random_state)
-    n_samples = X_minority.shape[0]
-    synthetic_samples: List[np.ndarray] = []
-    for _ in range(n_synthetic):
+    n_samples, n_features = X_minority.shape
+    out = np.empty((n_synthetic, n_features), dtype=X_minority.dtype)
+    for i in range(n_synthetic):
         idx = np.random.randint(0, n_samples)
         x = X_minority[idx]
-        distances = np.linalg.norm(X_minority - x, axis=1)
-        distances[idx] = np.inf
-        k_indices = np.argsort(distances)[:K]
+        diff = X_minority - x
+        dist_sq = np.einsum("ij,ij->i", diff, diff, optimize=True)
+        dist_sq[idx] = np.inf
+        k_indices = np.argsort(dist_sq)[:K]
         neighbor_idx = int(np.random.choice(k_indices))
-        xn = X_minority[neighbor_idx]
         lam = float(np.random.uniform(0, 1))
-        synthetic_samples.append(x + lam * (xn - x))
-    return np.array(synthetic_samples)
+        out[i] = x + lam * (X_minority[neighbor_idx] - x)
+    return out
 
 
 def smote_n_new(
@@ -475,8 +485,9 @@ def smote_n_new(
     for i in range(n_new_samples):
         idx = np.random.randint(0, n_samples)
         sample = X_minority[idx]
-        distances = np.linalg.norm(X_minority - sample, axis=1)
-        neighbor_indices = np.argsort(distances)[1 : k_eff + 1]
+        diff = X_minority - sample
+        dist_sq = np.einsum("ij,ij->i", diff, diff, optimize=True)
+        neighbor_indices = np.argsort(dist_sq)[1 : k_eff + 1]
         nn_idx = neighbor_indices[np.random.randint(0, len(neighbor_indices))]
         neighbor = X_minority[nn_idx]
         lam = np.random.random()
@@ -551,12 +562,7 @@ def linear_regression_gd(
     lr: float = 0.1,
     epochs: int = 500,
 ) -> np.ndarray:
-    m, d = X.shape
-    w = np.zeros(d)
-    for _ in range(epochs):
-        pred = X @ w
-        grad = (2.0 / m) * (X.T @ (pred - y))
-        w -= lr * grad
+    w, _ = gradient_descent(X, y, lr=lr, max_iters=epochs, early_stop=False)
     return w
 
 
@@ -574,9 +580,10 @@ def smote_reference(
     synth = np.zeros((n_synthetic, d))
     for t in range(n_synthetic):
         i = int(rng.integers(0, n))
-        dists = np.linalg.norm(X_minority - X_minority[i], axis=1)
-        dists[i] = np.inf
-        nn_idx = np.argpartition(dists, k_eff - 1)[:k_eff]
+        diff = X_minority - X_minority[i]
+        dist_sq = np.einsum("ij,ij->i", diff, diff, optimize=True)
+        dist_sq[i] = np.inf
+        nn_idx = np.argpartition(dist_sq, k_eff - 1)[:k_eff]
         j = int(rng.choice(nn_idx))
         lam = float(rng.random())
         synth[t] = X_minority[i] + lam * (X_minority[j] - X_minority[i])
