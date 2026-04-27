@@ -19,6 +19,8 @@ python examples/algorithms_reference.py
 
 ## 算法列表
 
+K-Means (簇心迭代)、KNN (欧氏距离+投票)、PageRank (幂迭代)、决策树核心 (信息增益)、卷积 (滑动窗口)、池化 (Max Pooling)、二分图判断 (BFS染色)、最小生成树 (Kruskal)、梯度下降 (线性回归版)、SMOTE (过采样)、模型剪枝（删除环中的一条边去环）、分布式异常训练算法、最小成本连接所有服务器
+
 | # | 算法 | 核心概念 | 文件 |
 |---|------|----------|------|
 | 01 | K-Means 聚类 | 簇心迭代 | [`algorithms/01_kmeans.py`](algorithms/01_kmeans.py) |
@@ -31,6 +33,7 @@ python examples/algorithms_reference.py
 | 08 | 最小生成树 | Kruskal + 并查集 | [`algorithms/08_kruskal.py`](algorithms/08_kruskal.py) |
 | 09 | 梯度下降 | 线性回归 | [`algorithms/09_gradient_descent.py`](algorithms/09_gradient_descent.py) |
 | 10 | SMOTE | 过采样插值 | [`algorithms/10_smote.py`](algorithms/10_smote.py) |
+
 
 ## 学习指南
 
